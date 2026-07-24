@@ -1,0 +1,1 @@
+"""Core shared modules for OCR, extraction, classification, and database operations."""

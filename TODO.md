@@ -1,0 +1,33 @@
+# OCR Platform — Refactoring Progress
+
+- [x] Create directory structure
+- [x] Create `.env.example`
+- [x] Create `.gitignore`
+- [x] Create `pyproject.toml`
+- [x] Create `requirements.txt`
+- [x] Create `src/__init__.py`
+- [x] Create `src/core/__init__.py`
+- [x] Create `src/core/config.py` (env vars + logging)
+- [x] Create `src/core/embedding.py` (single source of truth)
+- [x] Create `src/core/db.py` (connection pooling, imports from embedding)
+- [x] Create `src/core/ocr.py` (retry logic + logging)
+- [x] Create `src/core/extraction.py` (logging)
+- [x] Create `src/core/classifier.py` (logging + error handling)
+- [x] Create `src/core/pdf.py` (pathlib + logging)
+- [x] Create `src/invoice/__init__.py`
+- [x] Create `docker-compose.yml` (PostgreSQL + Ollama)
+- [x] Create `src/invoice/sql/init_invoice.sql`
+- [x] Create `src/invoice/agg_engine.py` (no sys.path hacks)
+- [x] Create `src/invoice/pipeline.py` (rename from pipeline_fast.py, add --ocr-only)
+- [x] Create `src/invoice/app.py` (refactored Streamlit UI)
+- [x] Create `scripts/reset.sh` (updated paths)
+- [x] Create `scripts/start_server.sh` (updated paths)
+- [x] Create `scripts/embed_update.py`
+- [x] Create `Makefile`
+- [x] Create `tests/test_core/test_classifier.py`
+- [x] Create `tests/test_core/test_extraction.py`
+- [x] Create `tests/test_invoice/test_agg_engine.py`
+- [x] Create `README.md`
+- [x] Fix `pyproject.toml` (build backend → `setuptools.build_meta`)
+- [x] Verify all modules import correctly
+- [x] Run test suite (66/69 pass)

@@ -1,0 +1,1 @@
+"""OCR Platform — Invoice OCR & RAG system."""

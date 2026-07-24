@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-platform"
+version = "1.0.0"
+description = "Invoice OCR & RAG platform with hybrid query routing"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "OCR Platform Team"},
+]
+
+dependencies = [
+    "psycopg2-binary>=2.9.9",
+    "pandas>=2.0.0",
+    "requests>=2.31.0",
+    "Pillow>=10.0.0",
+    "PyMuPDF>=1.23.0",
+    "streamlit>=1.28.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+ocr-pipeline = "src.invoice.pipeline:main"
+ocr-serve = "src.invoice.app:main"
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

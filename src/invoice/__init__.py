@@ -1,0 +1,1 @@
+"""Invoice application module — OCR pipeline, aggregation engine, and Streamlit UI."""
