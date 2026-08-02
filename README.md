@@ -314,7 +314,6 @@ ollama list  # Should show available models
 MIT License — see the [LICENSE](LICENSE) file for details.
 
 
-
 ---
 
 ## Acknowledgments
