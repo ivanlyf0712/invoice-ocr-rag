@@ -56,6 +56,55 @@ User Query
 
 ---
 
+## Switching OCR Backends
+
+Switch between OCR backends using the `OCR_BACKEND` environment variable.
+
+### Server Mode (Default)
+
+```bash
+# Start the server
+./scripts/start_server.sh
+
+# Run pipeline (uses server by default)
+python -m src.invoice.pipeline -f invoice.jpg
+```
+
+**Requirements:** llama-server running on port 8081 (built from branch `pr-23394`)
+
+### R-SWA Mode (No Server Required)
+
+```bash
+# Switch to R-SWA mode
+export OCR_BACKEND=rswa
+
+# Run pipeline (uses llama-mtmd-cli directly with R-SWA parameters)
+python -m src.invoice.pipeline -f invoice.jpg
+```
+
+**Requirements:** 
+- `llama-mtmd-cli` built from R-SWA branch (PR #24975) at `~/llama.cpp/build/bin/llama-mtmd-cli`
+- Model files at `~/uocr_dev/`:
+  - `unlimited-ocr-Q4_K_M.gguf`
+  - `mmproj-unlimited-ocr-q8_0.gguf`
+
+**Build R-SWA branch:**
+```bash
+cd ~/llama.cpp
+git fetch origin pull/24975/head:pr-24975
+git checkout pr-24975
+mkdir build && cd build
+cmake .. -DLLAMA_METAL=ON
+cmake --build . --config Release -j$(sysctl -n hw.logicalcpu)
+```
+
+**Optional:** Use HuggingFace model instead of local files:
+```bash
+export RSWA_USE_HF=true
+```
+
+---
+
 ## Quick Start
 
 ### 1. Clone and Install
@@ -185,7 +234,8 @@ ocr-platform/
 │   ├── core/                    # Core modules
 │   │   ├── config.py            # Environment configuration
 │   │   ├── db.py                # PostgreSQL connection pool & CRUD
-│   │   ├── ocr.py               # OCR engine (server + CLI modes)
+│   │   ├── ocr.py               # OCR engine (server + CLI + R-SWA modes)
+│   │   ├── ocr_rswa.py          # R-SWA OCR backend implementation
 │   │   ├── pdf.py               # PDF-to-image conversion
 │   │   ├── embedding.py         # Embedding generation (mxbai-embed-large)
 │   │   ├── extraction.py        # JSON extraction from OCR text
@@ -261,14 +311,63 @@ open htmlcov/index.html
 
 All configuration is via environment variables (see `.env.example`):
 
+### OCR Backend Selection
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OCR_MODE` | `server` | OCR backend: `server` or `cli` |
+| `OCR_BACKEND` | `server` | OCR backend: `server`, `cli`, or `rswa` |
+| `OCR_MODE` | `server` | Legacy backend selector (use `OCR_BACKEND` instead) |
+
+### Server Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `OCR_SERVER_URL` | `http://127.0.0.1:8081/v1/chat/completions` | llama-server endpoint |
+| `OCR_SERVER_MODEL` | `Unlimited-OCR` | Model name on server |
+| `OCR_SERVER_PROMPT` | `Please OCR the text in this image.` | OCR prompt |
+| `OCR_SERVER_TEMPERATURE` | `0.1` | Generation temperature |
+| `OCR_SERVER_MAX_TOKENS` | `2048` | Max tokens to generate |
+| `OCR_SERVER_REPEAT_PENALTY` | `1.5` | Repeat penalty |
+
+### CLI Mode (Legacy)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLAMA_CLI` | `~/llama.cpp/build/bin/llama-mtmd-cli` | Path to llama-mtmd-cli binary |
+| `UOCR_MODEL` | `~/uocr/Unlimited-OCR-Q4_K_M.gguf` | Local model path |
+| `UOCR_MMPROJ` | `~/uocr/mmproj-Unlimited-OCR-F16.gguf` | Local mmproj path |
+
+### R-SWA Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLAMA_MTMD_CLI` | `~/llama.cpp/build/bin/llama-mtmd-cli` | Path to llama-mtmd-cli binary (R-SWA branch) |
+| `UOCR_MODEL` | `~/uocr_dev/unlimited-ocr-Q4_K_M.gguf` | Local Q4 model path |
+| `UOCR_MMPROJ` | `~/uocr_dev/mmproj-unlimited-ocr-q8_0.gguf` | Local mmproj path |
+| `UOCR_HF_REPO` | `sabafallah/Unlimited-OCR-GGUF:bf16` | HuggingFace model repo |
+| `RSWA_USE_HF` | `false` | Use HuggingFace model instead of local |
+| `RSWA_TEMP` | `0` | Generation temperature |
+| `RSWA_N` | `8192` | Max tokens to generate |
+| `RSWA_C` | `16384` | Context size |
+| `RSWA_DRY_MULTIPLIER` | `0.8` | DRY penalty multiplier |
+| `RSWA_DRY_BASE` | `1.75` | DRY penalty base |
+| `RSWA_DRY_ALLOWED_LENGTH` | `35` | DRY allowed length |
+| `RSWA_DRY_PENALTY_LAST_N` | `128` | DRY penalty last N tokens |
+| `RSWA_DRY_SEQUENCE_BREAKER` | `none` | DRY sequence breaker mode |
+
+### LLM & Embeddings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API endpoint |
 | `TEXT_MODEL` | `qwen2.5:1.5b` | Model for JSON extraction |
 | `EMBED_MODEL` | `mxbai-embed-large` | Model for embeddings |
 | `RAG_MODEL` | `qwen2.5:1.5b` | Model for RAG answers |
+
+### Database
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_USER` | `ocr` | PostgreSQL user |

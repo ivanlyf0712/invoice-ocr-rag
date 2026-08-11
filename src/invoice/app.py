@@ -7,6 +7,7 @@ Usage:
 
 import logging
 import os
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from src.core.db import (
 from src.core.extraction import text_to_json, text_to_json_fallback, is_likely_fake
 from src.core.ocr import run_ocr
 from src.core.pdf import pdf_to_images_bytes
+from src.core.ocr_focr import run_ocr_focr, extract_text_from_focr_output
 from src.invoice.agg_engine import handle_aggregation, generate_aggregation_sql, _run_sql
 
 logger = logging.getLogger(__name__)
@@ -421,35 +423,109 @@ def display_history() -> None:
 # Upload processing
 # ──────────────────────────────────────────────────
 
-def process_upload(uploaded_file: Any) -> None:
+def process_upload(uploaded_file: Any, use_focr: bool = False) -> None:
     """Process an uploaded file (image or PDF) through the OCR pipeline.
 
     Args:
         uploaded_file: A Streamlit uploaded file object.
+        use_focr: If True, use FOCR backend instead of llama.cpp for OCR.
     """
     with st.spinner("Running OCR pipeline (this may take ~15 seconds per page)..."):
         if uploaded_file.name.lower().endswith(".pdf"):
             pdf_bytes = uploaded_file.getvalue()
-            pages = pdf_to_images_bytes(pdf_bytes, uploaded_file.name)
-            st.write(f"PDF has {len(pages)} pages. Processing each page...")
-            for img_path, source_name in pages:
-                raw_text = run_ocr(img_path)
+
+            if use_focr:
+                t0 = time.time()
+                use_multipage = bool(st.session_state.get("focr_multipage", False))
+                if use_multipage:
+                    # ── FOCR native multipage PDF ───────────────────────
+                    tmp_pdf = f"/tmp/{uploaded_file.name}"
+                    try:
+                        with open(tmp_pdf, "wb") as f:
+                            f.write(pdf_bytes)
+                        st.write("📄 Using FOCR multipage PDF...")
+                        raw_text = run_ocr_focr(tmp_pdf, multi_page=True)
+                        raw_text = extract_text_from_focr_output(raw_text)
+                    except subprocess.CalledProcessError:
+                        st.warning("Native FOCR multipage failed; falling back to page-by-page rasterization.")
+                        pages = pdf_to_images_bytes(pdf_bytes, uploaded_file.name)
+                        st.write(f"PDF has {len(pages)} pages. Processing with FOCR...")
+                        all_texts = []
+                        for idx, (img_path, source_name) in enumerate(pages, 1):
+                            st.write(f"  📄 FOCR page {idx}/{len(pages)}: {source_name}")
+                            txt = run_ocr_focr(img_path, multi_page=False)
+                            txt = extract_text_from_focr_output(txt)
+                            all_texts.append(txt)
+                            os.remove(img_path)
+                        raw_text = "\n\n".join(all_texts)
+                    finally:
+                        if os.path.exists(tmp_pdf):
+                            os.unlink(tmp_pdf)
+                else:
+                    # ── FOCR page-by-page via rasterized images ─────────
+                    pages = pdf_to_images_bytes(pdf_bytes, uploaded_file.name)
+                    st.write(f"PDF has {len(pages)} pages. Processing with FOCR...")
+                    all_texts = []
+                    for idx, (img_path, source_name) in enumerate(pages, 1):
+                        st.write(f"  📄 FOCR page {idx}/{len(pages)}: {source_name}")
+                        txt = run_ocr_focr(img_path, multi_page=False)
+                        txt = extract_text_from_focr_output(txt)
+                        all_texts.append(txt)
+                        os.remove(img_path)
+                    raw_text = "\n\n".join(all_texts)
+                t1 = time.time()
+                st.write(f"⏱ OCR: {t1 - t0:.1f}s")
+
                 data = text_to_json(raw_text)
                 if data and is_likely_fake(data):
                     data = text_to_json_fallback(raw_text)
                 if data is None or is_likely_fake(data):
                     data = {}
-                new_id = insert_invoice(data, raw_text, source_name)
-                update_embedding(new_id)
-                os.remove(img_path)
-            st.success(f"Processed {len(pages)} pages from PDF.")
+                else:
+                    st.json(data)
+
+                new_id = insert_invoice(data, raw_text, uploaded_file.name)
+                st.success(f"Inserted with ID {new_id}")
+
+                with st.spinner("Generating embedding..."):
+                    update_embedding(new_id)
+                st.success("Embedding generated.")
+                st.write(f"🕐 Total: {time.time() - t0:.1f}s")
+            else:
+                # ── Legacy multipage: convert PDF → images → OCR per page ──
+                pages = pdf_to_images_bytes(pdf_bytes, uploaded_file.name)
+                st.write(f"PDF has {len(pages)} pages. Processing each page...")
+                for img_path, source_name in pages:
+                    raw_text = run_ocr(img_path)
+                    data = text_to_json(raw_text)
+                    if data and is_likely_fake(data):
+                        data = text_to_json_fallback(raw_text)
+                    if data is None or is_likely_fake(data):
+                        data = {}
+                    new_id = insert_invoice(data, raw_text, source_name)
+                    update_embedding(new_id)
+                    os.remove(img_path)
+                st.success(f"Processed {len(pages)} pages from PDF.")
         else:
             tmp_path = f"/tmp/{uploaded_file.name}"
             with open(tmp_path, "wb") as f:
                 f.write(uploaded_file.getvalue())
 
             t0 = time.time()
-            raw_text = run_ocr(tmp_path)
+
+            if use_focr:
+                st.write("✨ Using FOCR backend...")
+                try:
+                    raw_text = run_ocr_focr(tmp_path)
+                    raw_text = extract_text_from_focr_output(raw_text)
+                except subprocess.CalledProcessError as e:
+                    st.error(f"FOCR failed with exit code {e.returncode}")
+                    if e.stderr:
+                        st.code(e.stderr, language="text")
+                    raise
+            else:
+                raw_text = run_ocr(tmp_path)
+
             t1 = time.time()
             st.write(f"⏱ OCR: {t1 - t0:.1f}s")
 
@@ -486,6 +562,10 @@ def main() -> None:
     """Main entry point for the Streamlit app."""
     st.set_page_config(page_title="Invoice OCR & RAG", layout="wide")
     st.title("📄 Unlimited‑OCR & RAG Dashboard")
+
+    # Default backend for this branch is R-SWA
+    os.environ["OCR_BACKEND"] = "rswa"
+    use_focr = False
 
     tab1, tab2, tab3 = st.tabs(["📋 View Database", "📤 Upload Invoice", "🔍 Search"])
 
@@ -589,10 +669,38 @@ def main() -> None:
         uploaded_file = st.file_uploader(
             "Choose an image or PDF...", type=["jpg", "jpeg", "png", "pdf"]
         )
+
+        col_toggle, col_info = st.columns([1, 3])
+        with col_toggle:
+            use_focr = st.toggle(
+                "FOCR",
+                value=False,
+                help="Toggle to use Franken OCR (FOCR) instead of R-SWA.",
+            )
+        with col_info:
+            if use_focr:
+                st.caption("✨ Using **FOCR** backend")
+            else:
+                st.caption("⚙️ Using **R-SWA** backend")
+
+        # Sync toggle to backend used by run_ocr() in this run
+        os.environ["OCR_BACKEND"] = "focr" if use_focr else "rswa"
+
+        if use_focr:
+            if "focr_multipage" not in st.session_state:
+                st.session_state["focr_multipage"] = False
+            st.checkbox(
+                "🧩 FOCR multipage",
+                key="focr_multipage",
+                value=False,
+                help="When enabled, pass the PDF directly to FOCR with --multi-page. "
+                     "When disabled, rasterize PDF pages to images and OCR one-by-one.",
+            )
+
         if uploaded_file is not None:
             st.write(f"File: **{uploaded_file.name}**")
             if st.button("Process Invoice"):
-                process_upload(uploaded_file)
+                process_upload(uploaded_file, use_focr=use_focr)
 
     with tab3:
         st.subheader("Semantic Search over Invoices")

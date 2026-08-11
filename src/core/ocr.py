@@ -21,6 +21,7 @@ from PIL import Image
 
 from src.core.config import (
     OCR_MODE,
+    OCR_BACKEND,
     OCR_SERVER_URL,
     OCR_SERVER_MODEL,
     OCR_SERVER_PROMPT,
@@ -33,6 +34,9 @@ from src.core.config import (
     MAX_LONG_EDGE,
     JPEG_QUALITY,
 )
+
+from src.core.ocr_rswa import run_ocr_rswa
+from src.core.ocr_focr import run_ocr_focr
 
 logger = logging.getLogger(__name__)
 
@@ -227,21 +231,36 @@ def run_ocr_cli(image_path: str) -> str:
 
 # ── Public API ───────────────────────────────────────────────────────────
 
-def run_ocr(image_path: str) -> str:
-    """OCR an image using the active backend (configured via OCR_MODE).
+def run_ocr(image_path: str, multi_page: bool = False) -> str:
+    """OCR an image using the active backend (configured via OCR_BACKEND or OCR_MODE).
 
     Args:
         image_path: Path to the image file.
+        multi_page: If True, use multipage processing (for FOCR backend with PDFs).
 
     Returns:
         Cleaned OCR text.
 
     Raises:
-        RuntimeError: If OCR fails in both modes.
+        RuntimeError: If OCR fails in all modes.
     """
-    logger.info("Running OCR on %s (mode=%s)", image_path, OCR_MODE)
-    if OCR_MODE == "cli":
+    # Read backend from env at call time so runtime changes (e.g. Streamlit toggle) take effect
+    backend = os.getenv("OCR_BACKEND", OCR_MODE)
+    
+    logger.info("Running OCR on %s (backend=%s, multi_page=%s)", image_path, backend, multi_page)
+    
+    if backend == "focr":
+        # FOCR backend (Franken OCR)
+        text = run_ocr_focr(image_path, multi_page=multi_page)
+        return text
+    elif backend == "rswa":
+        # R-SWA backend (new, uses llama-mtmd-cli with R-SWA parameters)
+        text = run_ocr_rswa(image_path)
+        return text
+    elif backend == "cli":
+        # Legacy CLI mode
         text = run_ocr_cli(image_path)
         return clean_grounding_tags(text)
     else:
+        # Default: server mode
         return _clean_server_text(run_ocr_server(image_path))

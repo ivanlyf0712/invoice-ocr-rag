@@ -20,8 +20,9 @@ from typing import Dict, Any, Optional
 import psycopg2
 import requests
 
-from src.core.config import OLLAMA_URL, DB_CONFIG
+from src.core.config import OLLAMA_URL, DB_CONFIG, OCR_BACKEND
 from src.core.ocr import run_ocr, clean_grounding_tags
+from src.core.ocr_focr import run_ocr_focr, extract_text_from_focr_output
 from src.core.extraction import text_to_json, is_likely_fake
 from src.core.embedding import get_embedding
 from src.core.pdf import pdf_to_images_path
@@ -148,23 +149,94 @@ def process_image(image_path: str) -> None:
     """
     fname = os.path.basename(image_path)
 
+    # Check if FOCR backend is enabled
+    use_focr = OCR_BACKEND.lower() == "focr"
+
     if image_path.lower().endswith(".pdf"):
-        print(f"\n📑 PDF detected: {fname} (page‑by‑page mode)")
-        page_paths = pdf_to_images_path(image_path)
-        total_pages = len(page_paths)
-        print(f"   → {total_pages} pages.")
-        for i, page_path in enumerate(page_paths):
-            source = f"{fname}_page_{i}"
+        if use_focr:
+            # ── FOCR multipage PDF processing ──────────────────────────
+            print(f"\n📑 PDF detected: {fname} (FOCR multipage mode)")
+            t0 = time.time()
             try:
-                process_single_image(page_path, source)
+                raw_text = run_ocr_focr(image_path, multi_page=True)
+                raw_text = extract_text_from_focr_output(raw_text)
+                t1 = time.time()
+                print(f"  ⏱  OCR: {t1-t0:.1f}s")
+                print("==============OCR Result===================")
+                print(raw_text)
+                print("===========================================")
+
+                # If --ocr-only, just return the text without DB insertion
+                if _OCR_ONLY_MODE:
+                    return
+
+                data = text_to_json(raw_text)
+                t2 = time.time()
+                print(f"  ⏱  JSON parse: {t2-t1:.1f}s")
+
+                if data is None:
+                    print("  ⚠️  JSON extraction failed – inserting raw text only.")
+                    data = {}
+                else:
+                    print(f"  📊 Fields: {json.dumps(data, indent=2)}")
+
+                insert_into_db(data, raw_text, fname)
+                print(f"  🕐 Total: {time.time()-t0:.1f}s")
             except Exception as e:
-                print(f"  ❌ Page {i} failed: {e}")
-            os.remove(page_path)
-            print(f"  [{i+1}/{total_pages}] pages done.")
-        print(f"  🎉 PDF processing complete ({total_pages} pages).")
+                print(f"  ❌ FOCR failed: {e}")
+                raise
+        else:
+            # ── Legacy page-by-page processing ──────────────────────────
+            print(f"\n📑 PDF detected: {fname} (page‑by‑page mode)")
+            page_paths = pdf_to_images_path(image_path)
+            total_pages = len(page_paths)
+            print(f"   → {total_pages} pages.")
+            for i, page_path in enumerate(page_paths):
+                source = f"{fname}_page_{i}"
+                try:
+                    process_single_image(page_path, source)
+                except Exception as e:
+                    print(f"  ❌ Page {i} failed: {e}")
+                os.remove(page_path)
+                print(f"  [{i+1}/{total_pages}] pages done.")
+            print(f"  🎉 PDF processing complete ({total_pages} pages).")
         return
 
-    process_single_image(image_path)
+    # Single image processing
+    if use_focr:
+        # FOCR for single images
+        print(f"\n📄 {fname} (FOCR mode)")
+        t0 = time.time()
+        try:
+            raw_text = run_ocr_focr(image_path, multi_page=False)
+            raw_text = extract_text_from_focr_output(raw_text)
+            t1 = time.time()
+            print(f"  ⏱  OCR: {t1-t0:.1f}s")
+            print("==============OCR Result===================")
+            print(raw_text)
+            print("===========================================")
+
+            if _OCR_ONLY_MODE:
+                return
+
+            data = text_to_json(raw_text)
+            t2 = time.time()
+            print(f"  ⏱  JSON parse: {t2-t1:.1f}s")
+
+            if data is None:
+                print("  ⚠️  JSON extraction failed – inserting raw text only.")
+                data = {}
+            else:
+                print(f"  📊 Fields: {json.dumps(data, indent=2)}")
+
+            insert_into_db(data, raw_text, fname)
+            print(f"  🕐 Total: {time.time()-t0:.1f}s")
+        except Exception as e:
+            print(f"  ❌ FOCR failed: {e}")
+            raise
+    else:
+        # Legacy single image processing
+        process_single_image(image_path)
 
 
 def main():
@@ -190,7 +262,18 @@ Examples:
         action="store_true",
         help="Only run OCR and print text, do not insert into database.",
     )
+    parser.add_argument(
+        "--backend",
+        choices=["llama", "focr", "rswa"],
+        default=None,
+        help="OCR backend to use: 'llama' (default), 'focr' (Franken OCR), or 'rswa' (R-SWA). "
+             "Overrides OCR_BACKEND environment variable.",
+    )
     args = parser.parse_args()
+
+    # Override OCR_BACKEND if --backend is specified
+    if args.backend:
+        os.environ["OCR_BACKEND"] = args.backend
 
     _OCR_ONLY_MODE = args.ocr_only
 

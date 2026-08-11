@@ -34,7 +34,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.debug("Configuration loaded from %s", _dotenv_path if _dotenv_path.exists() else "environment variables")
 
-# ── OCR: Server mode (primary, faster) ───────────────────────────────────
+# ── OCR: Backend selection ────────────────────────────────────────────────
+# OCR_BACKEND selects the OCR engine: "llama" (default), "focr", "rswa"
+OCR_BACKEND: str = os.getenv("OCR_BACKEND", "llama")
+
+# ── OCR: Server mode (llama.cpp server) ───────────────────────────────────
 OCR_MODE: str = os.getenv("OCR_MODE", "server")
 OCR_SERVER_URL: str = os.getenv("OCR_SERVER_URL", "http://127.0.0.1:8081/v1/chat/completions")
 OCR_SERVER_MODEL: str = os.getenv("OCR_SERVER_MODEL", "Unlimited-OCR")
@@ -48,6 +52,26 @@ LLAMA_CLI: str = os.getenv("LLAMA_CLI", os.path.expanduser("~/llama.cpp/build/bi
 UOCR_MODEL: str = os.getenv("UOCR_MODEL", os.path.expanduser("~/uocr/Unlimited-OCR-Q4_K_M.gguf"))
 UOCR_MMPROJ: str = os.getenv("UOCR_MMPROJ", os.path.expanduser("~/uocr/mmproj-Unlimited-OCR-F16.gguf"))
 
+# ── OCR: R-SWA backend (R-SWA branch with Repetition/Avoidance) ──────────
+# Set OCR_BACKEND=rswa to use the R-SWA OCR backend via llama-mtmd-cli
+LLAMA_MTMD_CLI: str = os.getenv("LLAMA_MTMD_CLI", os.path.expanduser("~/llama.cpp/build/bin/llama-mtmd-cli"))
+UOCR_HF_REPO: str = os.getenv("UOCR_HF_REPO", "sabafallah/Unlimited-OCR-GGUF:bf16")
+RSWA_USE_HF: bool = os.getenv("RSWA_USE_HF", "false").lower() in ("true", "1", "yes")
+
+# Generation parameters for R-SWA backend (optimized for document parsing)
+RSWA_GEN_PARAMS: Dict[str, Any] = {
+    "temp": float(os.getenv("RSWA_TEMP", "0")),
+    "flash_attn": os.getenv("RSWA_FLASH_ATTN", "off"),
+    "no_warmup": os.getenv("RSWA_NO_WARMUP", "true").lower() in ("true", "1", "yes"),
+    "n": int(os.getenv("RSWA_N", "8192")),
+    "c": int(os.getenv("RSWA_C", "16384")),
+    "dry_multiplier": float(os.getenv("RSWA_DRY_MULTIPLIER", "0.8")),
+    "dry_base": float(os.getenv("RSWA_DRY_BASE", "1.75")),
+    "dry_allowed_length": int(os.getenv("RSWA_DRY_ALLOWED_LENGTH", "35")),
+    "dry_penalty_last_n": int(os.getenv("RSWA_DRY_PENALTY_LAST_N", "128")),
+    "dry_sequence_breaker": os.getenv("RSWA_DRY_SEQUENCE_BREAKER", "none"),
+}
+
 # ── Image preprocessing ──────────────────────────────────────────────────
 MAX_LONG_EDGE: int = int(os.getenv("MAX_LONG_EDGE", "1024"))
 JPEG_QUALITY: int = int(os.getenv("JPEG_QUALITY", "85"))
@@ -60,6 +84,19 @@ RAG_MODEL: str = os.getenv("RAG_MODEL", "qwen2.5:1.5b")
 
 # ── llama-server for multi-page mode ─────────────────────────────────────
 LLAMA_SERVER_URL: str = os.getenv("LLAMA_SERVER_URL", "http://127.0.0.1:8081/v1/chat/completions")
+
+# ── FOCR (Franken OCR) backend ────────────────────────────────────────────
+# FOCR is a Rust CLI tool for CPU-optimized OCR with native multipage support.
+# Set OCR_BACKEND=focr to use FOCR instead of llama.cpp.
+FOCR_EXECUTABLE: str = os.getenv("FOCR_EXECUTABLE", "focr")
+FOCR_MODEL: str = os.getenv("FOCR_MODEL", "unlimited-ocr")
+FOCR_TEMPERATURE: float = float(os.getenv("FOCR_TEMPERATURE", "0"))
+FOCR_MAX_LENGTH: int = int(os.getenv("FOCR_MAX_LENGTH", "32768"))
+FOCR_NO_REPEAT_NGRAM: int = int(os.getenv("FOCR_NO_REPEAT_NGRAM", "35"))
+FOCR_NGRAM_WINDOW: int = int(os.getenv("FOCR_NGRAM_WINDOW", "128"))
+FOCR_CROP_MODE: str = os.getenv("FOCR_CROP_MODE", "base")
+FOCR_BASE_SIZE: int = int(os.getenv("FOCR_BASE_SIZE", "1024"))
+FOCR_IMAGE_SIZE: int = int(os.getenv("FOCR_IMAGE_SIZE", "640"))
 
 # ── PostgreSQL ───────────────────────────────────────────────────────────
 DB_CONFIG: Dict[str, Any] = {
