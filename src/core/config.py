@@ -103,7 +103,7 @@ DB_CONFIG: Dict[str, Any] = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": int(os.getenv("DB_PORT", "5432")),
     "user": os.getenv("DB_USER", "ocr"),
-    "password": os.getenv("DB_PASSWORD", "***REMOVED***"),
+    "password": os.getenv("DB_PASSWORD", ""),  # required — no hardcoded default
     "dbname": os.getenv("DB_NAME", "invoices"),
 }
 
