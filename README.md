@@ -272,7 +272,7 @@ All configuration is via environment variables (see `.env.example`):
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_USER` | `ocr` | PostgreSQL user |
-| `DB_PASSWORD` | `***REMOVED***` | PostgreSQL password |
+| `DB_PASSWORD` | *(required, no default)* | PostgreSQL password |
 | `DB_NAME` | `invoices` | PostgreSQL database |
 
 ---
