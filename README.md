@@ -1,9 +1,9 @@
-# OCR Platform — Invoice OCR & RAG
+# Invoice OCR RAG
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A production-grade invoice OCR and Retrieval-Augmented Generation (RAG) platform powered by [Unlimited-OCR](https://huggingface.co/unlimited-ocr) and Ollama. Features a hybrid query router that intelligently dispatches questions to either a SQL aggregation engine or a semantic search pipeline.
+An invoice OCR and Retrieval-Augmented Generation (RAG) platform powered by [Unlimited-OCR](https://huggingface.co/unlimited-ocr) and Ollama. Features a hybrid query router that intelligently dispatches questions to either a SQL aggregation engine or a semantic search pipeline.
 
 ---
 
@@ -61,8 +61,8 @@ User Query
 ### 1. Clone and Install
 
 ```bash
-git clone <repo-url> ocr-platform
-cd ocr-platform
+git clone <repo-url> invoice-ocr-rag
+cd invoice-ocr-rag
 
 # Create virtual environment (recommended)
 python3 -m venv venv
@@ -180,7 +180,7 @@ make clean          # Remove build artifacts
 ## Project Structure
 
 ```
-ocr-platform/
+invoice-ocr-rag/
 ├── src/
 │   ├── core/                    # Core modules
 │   │   ├── config.py            # Environment configuration
@@ -253,7 +253,7 @@ pytest --cov=src --cov-report=html
 open htmlcov/index.html
 ```
 
-**Current status:** 66/69 tests passing (3 pre-existing minor failures related to CJK keyword matching and null-value formatting).
+The suite covers query classification, data extraction, and the aggregation engine.
 
 ---
 
